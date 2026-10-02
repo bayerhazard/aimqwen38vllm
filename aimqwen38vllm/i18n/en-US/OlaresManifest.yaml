@@ -1,38 +1,16 @@
 metadata:
-  description: "Qwen3.8-27B (W4A16 AutoRound) served with HyperQwen — speculative decoding, KVarN KV cache and vision on one 24 GB card."
+  description: "Qwen3.8-27B served with vLLM"
   title: AIM Qwen3.8 27B
 
 spec:
   fullDescription: |
     **Model Overview**
-    Qwen3.8-27B is a vision-language model from the Qwen series (Alibaba), built on the Qwen3.5 architecture. It supports thinking, tool-calling, and native image/video understanding, with a 262K context window. This app serves the `W4A16 AutoRound` checkpoint from `dbirks/Qwen3.8-27B-W4A16-AutoRound` via HyperQwen.
-
-    **Inference Engine**
-    HyperQwen is a patch series against a pinned vLLM (0.30.0) plus a model-preparation pipeline, packaged upstream as one image. It targets large Qwen models on a single 24 GB card and ships DFlash2 block drafting, a calibrated draft vocabulary, KVarN 4/2-bit KV-cache compression and int8 tensor-core paths.
+    Qwen3.8-27B supports thinking, tool-calling, and native image understanding.
 
     **Key Features**
-    - Speculative decoding: MTP (default) or DFlash2 block drafter.
-    - KV cache: KVarN 4/2-bit at 200K, plus bf16 and fp8 profiles.
-    - Vision: one image per request, tower offloaded to host RAM.
-    - OpenAI-compatible API on port 8090 (proxied to the engine on port 8000).
-
-    **Serving profiles**
-    | Profile | Context | KV cache | Drafting |
-    |---|---|---|---|
-    | `fast`  | 64K  | bf16 via FlashAttention | DFlash2 |
-    | `long`  | 150K | fp8 via FlashInfer       | MTP     |
-    | `huge`  | 200K | KVarN 4/2-bit            | MTP     |
-
-    A profile switch is a pod restart, not a re-download.
-
-    **How It Works**
-    First, Model Console (llm-init) provides the entrance and API proxy while HyperQwen's own
-    prepare downloads and requantizes the weights in place, then the engine serves them.
-
-    **Stack**
-    - **HyperQwen** (vLLM 0.30.0): runs the model and serves API requests (port 8000)
-    - **Model Console**: entrance, progress dashboard and OpenAI API on port 8090
-
-    **Model Storage**
-    Prepared weights live under `appCommon/hyperqwen/models`; the shared HuggingFace cache is at
-    `appCommon/huggingface`, mounted as `/cache/hf/hub`.
+    Speculative decoding: MTP as int8
+    KV cache: 200k with k4v4_g128
+    MAX_SEQS=2
+    Performance: 80 - 100 t/s
+    Vision: Tower is offloaded to host RAM
+    OpenAI-compatible API

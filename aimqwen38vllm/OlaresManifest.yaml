@@ -4,10 +4,10 @@ apiVersion: 'v3'
 metadata:
   name: aimqwen38vllm
   icon: https://raw.githubusercontent.com/bayerhazard/aimqwen38vllm/main/icon.png
-  description: "Qwen3.8-27B (W4A16 AutoRound) served with HyperQwen — DFlash2/MTP speculative decoding, KVarN KV cache and vision on one 24 GB card."
+  description: "Qwen3.8-27B served with vLLM"
   appid: aimqwen38vllm
   title: AIM Qwen3.8 27B
-  version: '1.0.2'
+  version: '26.10.1'
   categories:
     - AI
     - Vision
@@ -36,47 +36,18 @@ spec:
   onlyAdmin: true
   versionName: 'dbirks/Qwen3.8-27B-W4A16-AutoRound'
   upgradeDescription: |
-    v1.0.0: first release. HyperQwen (patched vLLM 0.30.0, image pinned to syv-ai/HyperQwen@sha-e1459c7),
-    llm-init v1.3.5. Qwen3.8-27B W4A16 AutoRound (int4 body, int8 lm_head/embeddings/MTP),
-    DFlash2/MTP speculative decoding, KVarN 4/2-bit KV cache at 200K context, vision, exclusive GPU.
+    26.10.1 Initial Release for AImighty Analyst
   fullDescription: |
     **Model Overview**
-    Qwen3.8-27B is a vision-language model from the Qwen series (Alibaba), built on the Qwen3.5
-    architecture. It supports thinking, tool-calling, and native image/video understanding, with a
-    262K context window. This app serves the `W4A16 AutoRound` checkpoint from
-    `dbirks/Qwen3.8-27B-W4A16-AutoRound` via **HyperQwen**.
-
-    **Inference Engine**
-    HyperQwen is a patch series against a pinned vLLM (0.30.0) plus a model-preparation pipeline,
-    packaged upstream as one image. It targets large Qwen models on a single 24 GB card and ships
-    DFlash2 block drafting, a calibrated draft vocabulary, KVarN 4/2-bit KV-cache compression and
-    int8 tensor-core paths.
+    Qwen3.8-27B supports thinking, tool-calling, and native image understanding.
 
     **Key Features**
-    - Speculative decoding: MTP (default) or DFlash2 block drafter — switchable per profile.
-    - KV cache: KVarN 4/2-bit (default at 200K), plus bf16 and fp8 profiles.
-    - Vision: one image per request, up to 2048 image tokens; the tower is offloaded to host RAM.
-    - OpenAI-compatible API (port 8090, proxied by llm-init to the engine on port 8000).
-    - Whatever the model is good at, at the fastest measured configuration for this card.
-
-    **Serving profiles**
-    | Profile | Context | KV cache | Drafting | Notes |
-    |---|---|---|---|---|
-    | `fast`  | 64K  | bf16 via FlashAttention | DFlash2 | upstream default, lowest latency |
-    | `long`  | 150K | fp8 via FlashInfer       | MTP | best past 64K |
-    | `huge`  | 200K | KVarN 4/2-bit            | MTP | for prompts beyond 150K |
-
-    A profile switch is a pod restart, not a re-download. `EXTRA_ARGS` appends raw vLLM
-    arguments for anything the profiles do not cover.
-
-    **API**
-    OpenAI-compatible (`/v1/chat/completions`, `/v1/models`) through the model console on port 8090
-    and through the shared entrance for the Router.
-
-    **Resource Usage**
-    - GPU: one discrete NVIDIA GPU, exclusive.
-    - Context: up to 200K tokens (profile-dependent).
-    - First launch downloads and prepares ~21.5 GB.
+    Speculative decoding: MTP as int8
+    KV cache: 200k with k4v4_g128
+    MAX_SEQS=2
+    Performance: 80 - 100 t/s
+    Vision: Tower is offloaded to host RAM
+    OpenAI-compatible API
 
   developer: syv-ai
   website: https://github.com/syv-ai/HyperQwen
@@ -84,6 +55,7 @@ spec:
   submitter: bayerhazard
   locale:
     - en-US
+    - de-DE
   license:
     - text: Apache-2.0
       url: https://github.com/syv-ai/HyperQwen/blob/main/LICENSE
