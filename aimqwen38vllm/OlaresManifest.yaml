@@ -7,9 +7,10 @@ metadata:
   description: "Qwen3.8-27B (W4A16 AutoRound) served with HyperQwen — DFlash2/MTP speculative decoding, KVarN KV cache and vision on one 24 GB card."
   appid: aimqwen38vllm
   title: AIM Qwen3.8 27B
-  version: '1.0.1'
+  version: '1.0.2'
   categories:
     - AI
+    - Vision
 sharedEntrances:
   - name: aimqwen38vllm
     host: sharedentrances-api
