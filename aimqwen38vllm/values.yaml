@@ -1,0 +1,20 @@
+# Per-workload replica counts (keys match Deployment metadata.name and
+# workloadReplicas in OlaresManifest).
+#   aimqwen38vllm — engine Deployment (== appid / Release.Name)
+#   llminit       — llm-init / entrance Deployment
+workloads:
+  llminit:
+    replicaCount: 1
+  aimqwen38vllm:
+    replicaCount: 1
+
+# The HyperQwen engine image. Pinned to one immutable commit on
+# ghcr.io/syv-ai/hyperqwen (the project publishes only `latest` and `sha-<7>`
+# tags). sha-e1459c7 = syv-ai/HyperQwen@e1459c7 (2026-09-30, vLLM 0.30.0).
+engine:
+  image: ghcr.io/syv-ai/hyperqwen:sha-e1459c7
+
+# Fallback when Olares Settings leaves SERVING_PROFILE empty (renders as "",
+# not absent). The profiles themselves are data in templates/_helpers.tpl.
+profile:
+  serving: huge

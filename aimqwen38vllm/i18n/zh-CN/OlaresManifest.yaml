@@ -1,0 +1,37 @@
+metadata:
+  description: "使用 HyperQwen 运行 Qwen3.8-27B（W4A16 AutoRound）——单张 24 GB 显卡上支持投机解码、KVarN KV 缓存与视觉。"
+  title: AIM Qwen3.8 27B
+
+spec:
+  fullDescription: |
+    **模型简介**
+    Qwen3.8-27B 是阿里巴巴 Qwen 系列的视觉语言模型，基于 Qwen3.5 架构，支持思考、工具调用与原生图像/视频理解，上下文窗口 262K。本应用通过 HyperQwen 运行 `dbirks/Qwen3.8-27B-W4A16-AutoRound` 的 `W4A16 AutoRound` 量化版本。
+
+    **推理引擎**
+    HyperQwen 是针对固定版本 vLLM（0.30.0）的补丁系列加模型预处理流水线，打包为单个镜像。它面向单张 24 GB 显卡上的大型 Qwen 模型，提供 DFlash2 块级草稿、校准草稿词表、KVarN 4/2-bit KV 缓存压缩与 int8 张量核心路径。
+
+    **主要特性**
+    - 投机解码：MTP（默认）或 DFlash2 块级草稿器。
+    - KV 缓存：200K 下使用 KVarN 4/2-bit，另有 bf16 与 fp8 档位。
+    - 视觉：每次请求一张图片，视觉塔卸载到主机内存。
+    - 8090 端口提供 OpenAI 兼容 API（代理到 8000 端口的引擎）。
+
+    **服务档位**
+    | 档位 | 上下文 | KV 缓存 | 草稿 |
+    |---|---|---|---|
+    | `fast`  | 64K  | bf16（FlashAttention） | DFlash2 |
+    | `long`  | 150K | fp8（FlashInfer）      | MTP     |
+    | `huge`  | 200K | KVarN 4/2-bit          | MTP     |
+
+    切换档位只需重启 Pod，无需重新下载。
+
+    **工作流程说明**
+    首先 Model Console（llm-init）提供入口与 API 代理，同时 HyperQwen 自带的 prepare 下载并原地重新量化权重，随后引擎开始服务。
+
+    **技术栈说明**
+    - **HyperQwen**（vLLM 0.30.0）：运行模型并通过 8000 端口提供 API
+    - **Model Console**：8090 端口提供入口、进度面板与 OpenAI API
+
+    **模型存储**
+    预处理后的权重位于 `appCommon/hyperqwen/models`；共享 HuggingFace 缓存位于
+    `appCommon/huggingface`，挂载为 `/cache/hf/hub`。

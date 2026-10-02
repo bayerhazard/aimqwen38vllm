@@ -1,0 +1,160 @@
+{{- $vision := eq (toString (.Values.olaresEnv.VISION | default "1")) "1" -}}
+{{- $modelName := .Values.olaresEnv.MODEL_NAME | default "qwen3.8-27b" -}}
+{{- $modelMode := .Values.olaresEnv.MODEL_MODE | default "chat" -}}
+{{- $modelSource := .Values.olaresEnv.MODEL_SOURCE | default "hf://dbirks/Qwen3.8-27B-W4A16-AutoRound --include config.json" -}}
+{{- $modelSupports := .Values.olaresEnv.MODEL_SUPPORTS | default "thinking,tools,vision" -}}
+{{- $hfToken := .Values.olaresEnv.HF_TOKEN | default "" -}}
+{{- $logLevel := .Values.olaresEnv.LOG_LEVEL | default "info" -}}
+{{- $runStateHostPath := printf "%s/huggingface/llm-init-run/%s" .Values.userspace.appCommon .Release.Name -}}
+---
+# llm-init: the app's entrance and OpenAI/Anthropic proxy. It does NOT download
+# the real weights — HyperQwen's own prepare does, and requantizes them in place.
+# llm-init gets a 15 KB MODEL_SOURCE it satisfies instantly and is used for what
+# it is uniquely good at: answering /livez seconds after the pod starts, so the
+# install completes without waiting on the ~21.5 GB download. Once the engine is
+# up it proxies port 8000. No GPU.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llminit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    io.kompose.service: llm-init
+spec:
+  replicas: {{ .Values.workloads.llminit.replicaCount }}
+  selector:
+    matchLabels:
+      io.kompose.service: llm-init
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        io.kompose.network/chrome-default: "true"
+        io.kompose.service: llm-init
+        app.bytetrade.io/shared-entrance: "true"
+        io.bytetrade.app: "true"
+        applications.app.bytetrade.io/name: "{{ .Release.Name }}"
+        applications.app.bytetrade.io/raw-app-name: "{{ .Release.Name }}"
+    spec:
+      # Same Service-name reason as the engine: no legacy Docker-link vars.
+      enableServiceLinks: false
+      restartPolicy: Always
+      securityContext:
+        fsGroup: 1000
+      volumes:
+        - name: hf-cache
+          hostPath:
+            path: "{{ .Values.userspace.appCommon }}/huggingface"
+            type: DirectoryOrCreate
+        - name: run-state
+          hostPath:
+            path: "{{ $runStateHostPath }}"
+            type: DirectoryOrCreate
+      initContainers:
+        - name: init-chown
+          image: docker.io/beclab/aboveos-busybox:1.37.0
+          command:
+            - sh
+            - -c
+            - "mkdir -p /cache/hf/hub/.locks /run/llm-init && chown 1000:1000 /cache/hf/hub /run/llm-init || true"
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - {name: hf-cache, mountPath: /cache/hf/hub}
+            - {name: run-state, mountPath: /run/llm-init}
+      containers:
+        - name: llm-init
+          image: docker.io/beclab/llm-init:v1.3.5
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ENGINE_KIND
+              value: vllm
+            - name: MODEL_NAME
+              value: "{{ $modelName }}"
+            - name: MODEL_MODE
+              value: "{{ $modelMode }}"
+            - name: MODEL_SOURCE
+              value: "{{ $modelSource }}"
+            - name: MODEL_SUPPORTS
+              value: "{{ include "aimqwen38vllm.supports" (dict "supports" $modelSupports "vision" $vision) }}"
+            - name: HF_ENDPOINT
+              value: "https://huggingface.co/"
+            - name: HF_HUB_CACHE
+              value: /cache/hf/hub
+            - name: RUN_DIR
+              value: /run/llm-init
+            - name: PORT
+              value: "8090"
+            - name: LOG_LEVEL
+              value: "{{ $logLevel }}"
+            - name: LOG_FORMAT
+              value: json
+{{- if $hfToken }}
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: HF_TOKEN
+{{- end }}
+          ports:
+            - name: http
+              containerPort: 8090
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 8090
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /livez
+              port: 8090
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - {name: hf-cache, mountPath: /cache/hf/hub}
+            - {name: run-state, mountPath: /run/llm-init}
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+---
+# Entrance service: OlaresManifest entrances[].host resolves this name.
+apiVersion: v1
+kind: Service
+metadata:
+  name: download-svc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    io.kompose.service: llm-init
+spec:
+  selector:
+    io.kompose.service: llm-init
+  ports:
+    - name: http
+      port: 8090
+      targetPort: 8090
+  type: ClusterIP
+---
+# The shared entrance the manifest declares and the Router probes.
+apiVersion: v1
+kind: Service
+metadata:
+  name: sharedentrances-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    io.kompose.service: llm-init
+spec:
+  selector:
+    io.kompose.service: llm-init
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8090
+  type: ClusterIP

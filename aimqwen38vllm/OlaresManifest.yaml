@@ -1,0 +1,209 @@
+olaresManifest.version: '0.12.0'
+olaresManifest.type: app
+apiVersion: 'v3'
+metadata:
+  name: aimqwen38vllm
+  icon: https://raw.githubusercontent.com/bayerhazard/aimqwen38vllm/main/icon.png
+  description: "Qwen3.8-27B (W4A16 AutoRound) served with HyperQwen — DFlash2/MTP speculative decoding, KVarN KV cache and vision on one 24 GB card."
+  appid: aimqwen38vllm
+  title: AIM Qwen3.8 27B
+  version: '1.0.1'
+  categories:
+    - AI
+sharedEntrances:
+  - name: aimqwen38vllm
+    host: sharedentrances-api
+    port: 0
+    title: AIM Qwen3.8 27B
+    invisible: true
+    authLevel: internal
+    icon: https://raw.githubusercontent.com/bayerhazard/aimqwen38vllm/main/icon.png
+entrances:
+  - name: aimqwen38vllm
+    port: 8090
+    host: download-svc
+    title: AIM Qwen3.8 27B
+    icon: https://raw.githubusercontent.com/bayerhazard/aimqwen38vllm/main/icon.png
+    openMethod: window
+    authLevel: internal
+#   aimqwen38vllm — engine Deployment (== appid / Release.Name)
+#   llminit        — llm-init / entrance Deployment
+workloadReplicas:
+  aimqwen38vllm: 1
+  llminit: 1
+spec:
+  onlyAdmin: true
+  versionName: 'dbirks/Qwen3.8-27B-W4A16-AutoRound'
+  upgradeDescription: |
+    v1.0.0: first release. HyperQwen (patched vLLM 0.30.0, image pinned to syv-ai/HyperQwen@sha-e1459c7),
+    llm-init v1.3.5. Qwen3.8-27B W4A16 AutoRound (int4 body, int8 lm_head/embeddings/MTP),
+    DFlash2/MTP speculative decoding, KVarN 4/2-bit KV cache at 200K context, vision, exclusive GPU.
+  fullDescription: |
+    **Model Overview**
+    Qwen3.8-27B is a vision-language model from the Qwen series (Alibaba), built on the Qwen3.5
+    architecture. It supports thinking, tool-calling, and native image/video understanding, with a
+    262K context window. This app serves the `W4A16 AutoRound` checkpoint from
+    `dbirks/Qwen3.8-27B-W4A16-AutoRound` via **HyperQwen**.
+
+    **Inference Engine**
+    HyperQwen is a patch series against a pinned vLLM (0.30.0) plus a model-preparation pipeline,
+    packaged upstream as one image. It targets large Qwen models on a single 24 GB card and ships
+    DFlash2 block drafting, a calibrated draft vocabulary, KVarN 4/2-bit KV-cache compression and
+    int8 tensor-core paths.
+
+    **Key Features**
+    - Speculative decoding: MTP (default) or DFlash2 block drafter — switchable per profile.
+    - KV cache: KVarN 4/2-bit (default at 200K), plus bf16 and fp8 profiles.
+    - Vision: one image per request, up to 2048 image tokens; the tower is offloaded to host RAM.
+    - OpenAI-compatible API (port 8090, proxied by llm-init to the engine on port 8000).
+    - Whatever the model is good at, at the fastest measured configuration for this card.
+
+    **Serving profiles**
+    | Profile | Context | KV cache | Drafting | Notes |
+    |---|---|---|---|---|
+    | `fast`  | 64K  | bf16 via FlashAttention | DFlash2 | upstream default, lowest latency |
+    | `long`  | 150K | fp8 via FlashInfer       | MTP | best past 64K |
+    | `huge`  | 200K | KVarN 4/2-bit            | MTP | for prompts beyond 150K |
+
+    A profile switch is a pod restart, not a re-download. `EXTRA_ARGS` appends raw vLLM
+    arguments for anything the profiles do not cover.
+
+    **API**
+    OpenAI-compatible (`/v1/chat/completions`, `/v1/models`) through the model console on port 8090
+    and through the shared entrance for the Router.
+
+    **Resource Usage**
+    - GPU: one discrete NVIDIA GPU, exclusive.
+    - Context: up to 200K tokens (profile-dependent).
+    - First launch downloads and prepares ~21.5 GB.
+
+  developer: syv-ai
+  website: https://github.com/syv-ai/HyperQwen
+  sourceCode: https://github.com/syv-ai/HyperQwen
+  submitter: bayerhazard
+  locale:
+    - en-US
+  license:
+    - text: Apache-2.0
+      url: https://github.com/syv-ai/HyperQwen/blob/main/LICENSE
+
+  # Exclusive-GPU app: the flat resource envelope (no accelerator[] block).
+  # Olares 1.12.7 patches a HAMi nvidia.com/gpumem limit to 0 on suspend, which
+  # then fails validation against a lingering gpumem request; nvidia.com/gpu,
+  # driven by requiredGpu: 1, avoids that.
+  supportArch:
+    - amd64
+  requiredCpu: "4"
+  limitedCpu: "16"
+  requiredMemory: "23Gi"
+  limitedMemory: "48Gi"
+  requiredDisk: 50Mi
+  limitedDisk: 500Gi
+  requiredGpu: 1
+permission:
+  appData: true
+  appCommon: true
+options:
+  apiTimeout: 0
+  LLMGatewaySupported: true
+  allowMultipleInstall: true
+  shared: true
+  templateOnly: false
+  dependencies:
+    - name: olares
+      version: '>=1.12.6-0'
+      type: system
+envs:
+  # Fixed model declaration (this app serves one checkpoint). The Router app
+  # builds its model entry from these defaults.
+  - envName: MODEL_SOURCE
+    required: true
+    type: string
+    editable: false
+    applyOnChange: false
+    default: "hf://dbirks/Qwen3.8-27B-W4A16-AutoRound --include config.json"
+    description: "Only config.json: HyperQwen's own prepare downloads and requantizes the weights, so llm-init must not fetch them a second time."
+    regex: "^hf://"
+  - envName: MODEL_NAME
+    required: true
+    type: string
+    editable: false
+    applyOnChange: false
+    default: "qwen3.8-27b"
+    description: "The served model id. Fixed by HyperQwen's launcher; llm-init waits for exactly this id on the engine's /v1/models."
+  - envName: MODEL_MODE
+    required: true
+    type: string
+    editable: false
+    applyOnChange: false
+    default: "chat"
+    options:
+      - title: Chat
+        value: chat
+  - envName: MODEL_SUPPORTS
+    required: true
+    type: string
+    editable: false
+    applyOnChange: false
+    default: "thinking,tools,vision"
+    multiSelect: true
+    splitter: ","
+    options:
+      - title: Vision
+        value: vision
+      - title: Tools
+        value: tools
+      - title: Thinking
+        value: thinking
+      - title: None
+        value: none
+    description: "The model capabilities."
+  # The serving profile as one vetted choice. Olares Settings can change it on a
+  # running install; the chart expands it to CTX/SPEC/PREFIX_CACHE.
+  - envName: SERVING_PROFILE
+    required: false
+    type: string
+    editable: true
+    applyOnChange: true
+    default: "huge"
+    options:
+      - title: "Fast — 64K context, bf16 KV, DFlash2 drafting"
+        value: fast
+      - title: "Long — 150K context, fp8 KV, MTP drafting"
+        value: long
+      - title: "Huge — 200K context, KVarN 4/2-bit KV, MTP drafting (default)"
+        value: huge
+  - envName: EXTRA_ARGS
+    required: false
+    type: string
+    editable: true
+    applyOnChange: true
+    default: ""
+    description: "Extra vLLM arguments, appended last. Empty unless running an experiment; a wrong argument crashloops the engine."
+  - envName: VISION
+    required: false
+    type: string
+    editable: true
+    applyOnChange: true
+    default: "1"
+    options:
+      - title: "On"
+        value: "1"
+      - title: "Off"
+        value: "0"
+  - envName: HF_ENDPOINT
+    required: false
+    applyOnChange: true
+    valueFrom:
+      envName: OLARES_SYSTEM_HUGGINGFACE_SERVICE
+  - envName: HF_TOKEN
+    required: false
+    applyOnChange: true
+    valueFrom:
+      envName: OLARES_SYSTEM_HUGGINGFACE_TOKEN
+  - envName: GPU_MEMORY
+    required: true
+    default: "24Gi"
+    type: string
+    editable: false
+    applyOnChange: false

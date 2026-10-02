@@ -1,0 +1,185 @@
+{{- $serving := include "aimqwen38vllm.servingDict" . | fromYaml -}}
+{{- $vision := eq (toString (.Values.olaresEnv.VISION | default "1")) "1" -}}
+{{- $extraArgs := .Values.olaresEnv.EXTRA_ARGS | default "" -}}
+{{- $engineImage := .Values.engine.image -}}
+{{- /* Must match llm-init.yaml. */ -}}
+{{- $runStateHostPath := printf "%s/huggingface/llm-init-run/%s" .Values.userspace.appCommon .Release.Name -}}
+{{- $hfToken := .Values.olaresEnv.HF_TOKEN | default "" -}}
+---
+# HyperQwen engine Deployment. The image's own entrypoint owns download +
+# in-place requantization + serving; llm-init is the entrance and OpenAI proxy
+# (http://vllm:8000, derived from ENGINE_KIND=vllm).
+#
+# engine Deployment name == Release.Name (v3 allowMultipleInstall);
+# label/selector stays io.kompose.service: vllm.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: '{{ .Release.Name }}'
+  namespace: {{ .Release.Namespace }}
+  labels:
+    io.kompose.service: vllm
+  annotations:
+    applications.app.bytetrade.io/gpu-inject: "vllm"
+spec:
+  replicas: {{ .Values.workloads.aimqwen38vllm.replicaCount }}
+  selector:
+    matchLabels:
+      io.kompose.service: vllm
+  strategy:
+    # Recreate, never RollingUpdate: one GPU; a second pod would sit Pending.
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        io.kompose.network/chrome-default: "true"
+        io.kompose.service: vllm
+        app.bytetrade.io/shared-entrance: "true"
+        io.bytetrade.app: "true"
+        applications.app.bytetrade.io/name: "{{ .Release.Name }}"
+        applications.app.bytetrade.io/raw-app-name: "{{ .Release.Name }}"
+    spec:
+      # A Service named `vllm` is what llm-init derives from ENGINE_KIND=vllm,
+      # but Kubernetes injects legacy Docker-link vars for it (VLLM_PORT=...),
+      # which vLLM would read as its listening port. Off; nothing here uses it.
+      enableServiceLinks: false
+      restartPolicy: Always
+      runtimeClassName: nvidia
+      securityContext:
+        fsGroup: 1000
+      volumes:
+        - name: hf-cache
+          hostPath:
+            path: "{{ .Values.userspace.appCommon }}/huggingface"
+            type: DirectoryOrCreate
+        - name: app-models
+          hostPath:
+            path: "{{ .Values.userspace.appCommon }}/hyperqwen/app-models"
+            type: DirectoryOrCreate
+        - name: engine-cache
+          hostPath:
+            path: "{{ .Values.userspace.appCommon }}/hyperqwen/cache"
+            type: DirectoryOrCreate
+        - name: run-state
+          hostPath:
+            path: "{{ $runStateHostPath }}"
+            type: DirectoryOrCreate
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+      initContainers:
+        # hostPath dirs are created root-owned; the engine runs as UID 1000.
+        - name: init-permissions
+          image: docker.io/beclab/aboveos-busybox:1.37.0
+          command:
+            - sh
+            - -c
+            - "mkdir -p /app/models /cache /run/llm-init && chown 1000:1000 /app/models /cache /run/llm-init /cache/hf/hub || true"
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - {name: hf-cache, mountPath: /cache/hf/hub}
+            - {name: app-models, mountPath: /app/models}
+            - {name: engine-cache, mountPath: /cache}
+            - {name: run-state, mountPath: /run/llm-init}
+      containers:
+        - name: vllm
+          image: "{{ $engineImage }}"
+          imagePullPolicy: IfNotPresent
+          # HyperQwen's entrypoint: prepare (idempotent; a state check once the
+          # model exists) then verify then serve. `single` = low-latency profile.
+          command: ["bash", "-lc", "exec /app/docker/entrypoint.sh single"]
+          env:
+            - name: ENGINE_KIND
+              value: vllm
+            # HyperQwen's prepare downloads to BASE_MODEL_DIR and requantizes it
+            # in place there; its launcher loads MODEL (the prepared dir).
+            - name: HF_REPO
+              value: "dbirks/Qwen3.8-27B-W4A16-AutoRound"
+            - name: BASE_MODEL_DIR
+              value: /app/models/Qwen3.8-27B-W4A16-AutoRound
+            - name: MODEL
+              value: /app/models/Qwen3.8-27B-W4A16-AutoRound
+            - name: CTX
+              value: "{{ $serving.ctx }}"
+            - name: SPEC
+              value: "{{ $serving.spec }}"
+            - name: PREFIX_CACHE
+              value: "{{ $serving.prefixCache }}"
+            - name: MAX_SEQS
+              value: "2"
+            - name: GPU_UTIL
+              value: "0.90"
+            - name: PORT
+              value: "8000"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: VISION
+              value: "{{ ternary "1" "0" $vision }}"
+            - name: VISION_OFFLOAD
+              value: "1"
+            - name: CUDAGRAPH_MODE
+              value: "PIECEWISE"
+            - name: PREPARE
+              value: "1"
+            - name: VERIFY
+              value: "0"
+            - name: HF_HUB_CACHE
+              value: /cache/hf/hub
+            - name: HF_HOME
+              value: /cache
+{{- if $extraArgs }}
+            - name: EXTRA_ARGS
+              value: "{{ $extraArgs }}"
+{{- end }}
+{{- if $hfToken }}
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: HF_TOKEN
+{{- end }}
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: TZ
+              value: Etc/UTC
+          ports:
+            - name: vllm
+              containerPort: 8000
+          # No readiness/liveness probe: llm-init owns serving readiness (it
+          # polls /v1/models and flips its own /readyz). A probe here would keep
+          # the pod NotReady through the long first-boot prepare.
+          volumeMounts:
+            - {name: hf-cache, mountPath: /cache/hf/hub}
+            - {name: app-models, mountPath: /app/models}
+            - {name: engine-cache, mountPath: /cache}
+            - {name: run-state, mountPath: /run/llm-init}
+            - {name: dshm, mountPath: /dev/shm}
+          resources:
+            requests:
+              cpu: "2"
+              memory: 8Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "16"
+              memory: 40Gi
+              nvidia.com/gpu: "1"
+---
+# Service name MUST be "vllm": llm-init derives http://vllm:<default port>
+# from ENGINE_KIND. Port 8000 is vLLM's default. Internal only.
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    io.kompose.service: vllm
+spec:
+  selector:
+    io.kompose.service: vllm
+  ports:
+    - name: vllm
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
