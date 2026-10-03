@@ -8,9 +8,9 @@ spec:
     Qwen3.8-27B supports thinking, tool-calling, and native image understanding.
 
     **Key Features**
-    Speculative decoding: MTP as int8
-    KV cache: 200k with k4v4_g128
-    MAX_SEQS=2
-    Performance: 80 - 100 t/s
+    Speculative decoding: MTP, int4 GPTQ head
+    KV cache: 200k with k4v2_g128
+    MAX_SEQS=4
+    Performance: 95 - 117 t/s code, 70 - 99 t/s prose
     Vision: Tower is offloaded to host RAM
     OpenAI-compatible API

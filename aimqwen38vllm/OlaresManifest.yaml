@@ -7,7 +7,7 @@ metadata:
   description: "Qwen3.8-27B served with vLLM"
   appid: aimqwen38vllm
   title: AIM Qwen3.8 27B
-  version: '26.10.1'
+  version: '26.10.2'
   categories:
     - AI
     - Vision
@@ -36,16 +36,18 @@ spec:
   onlyAdmin: true
   versionName: 'dbirks/Qwen3.8-27B-W4A16-AutoRound'
   upgradeDescription: |
-    26.10.1 Initial Release for AImighty Analyst
+    26.10.2 Serving tuning. AutoRound fast variant (GPTQ-int4 lm_head + MTP with a draft
+    vocabulary counted over the model's own outputs), 4 request slots and a 0.93 memory
+    budget: +6.5% decode, KV pool 238,938 -> 339,823 tokens (1.70x at 200k).
   fullDescription: |
     **Model Overview**
     Qwen3.8-27B supports thinking, tool-calling, and native image understanding.
 
     **Key Features**
-    Speculative decoding: MTP as int8
-    KV cache: 200k with k4v4_g128
-    MAX_SEQS=2
-    Performance: 80 - 100 t/s
+    Speculative decoding: MTP, int4 GPTQ head
+    KV cache: 200k with k4v2_g128
+    MAX_SEQS=4
+    Performance: 95 - 117 t/s code, 70 - 99 t/s prose
     Vision: Tower is offloaded to host RAM
     OpenAI-compatible API
 

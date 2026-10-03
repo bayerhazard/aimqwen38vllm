@@ -1,6 +1,13 @@
 {{- $serving := include "aimqwen38vllm.servingDict" . | fromYaml -}}
 {{- $vision := eq (toString (.Values.olaresEnv.VISION | default "1")) "1" -}}
 {{- $extraArgs := .Values.olaresEnv.EXTRA_ARGS | default "" -}}
+{{- $gpuUtil := toString (.Values.olaresEnv.GPU_UTIL | default "0.93") -}}
+{{- $maxSeqs := toString (.Values.olaresEnv.MAX_SEQS | default "4") -}}
+{{- /* Leave MODEL unset to let single-user/select_model.sh prefer the prepared
+       ...-fast variant (int4-GPTQ lm_head + MTP, draft vocab from the model's own
+       outputs) and fall back to the base dir when it is absent. Pinning MODEL
+       overrides that preference — "Preserve explicit MODEL". */ -}}
+{{- $modelDir := .Values.olaresEnv.MODEL | default "" -}}
 {{- $engineImage := .Values.engine.image -}}
 {{- /* Must match llm-init.yaml. */ -}}
 {{- $runStateHostPath := printf "%s/huggingface/llm-init-run/%s" .Values.userspace.appCommon .Release.Name -}}
@@ -99,8 +106,10 @@ spec:
               value: "dbirks/Qwen3.8-27B-W4A16-AutoRound"
             - name: BASE_MODEL_DIR
               value: /app/models/Qwen3.8-27B-W4A16-AutoRound
+{{- if $modelDir }}
             - name: MODEL
-              value: /app/models/Qwen3.8-27B-W4A16-AutoRound
+              value: "{{ $modelDir }}"
+{{- end }}
             - name: CTX
               value: "{{ $serving.ctx }}"
             - name: SPEC
@@ -108,9 +117,9 @@ spec:
             - name: PREFIX_CACHE
               value: "{{ $serving.prefixCache }}"
             - name: MAX_SEQS
-              value: "2"
+              value: "{{ $maxSeqs }}"
             - name: GPU_UTIL
-              value: "0.90"
+              value: "{{ $gpuUtil }}"
             - name: PORT
               value: "8000"
             - name: HOST

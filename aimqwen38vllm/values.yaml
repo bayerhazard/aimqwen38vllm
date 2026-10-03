@@ -18,3 +18,12 @@ engine:
 # not absent). The profiles themselves are data in templates/_helpers.tpl.
 profile:
   serving: huge
+
+# Olares overwrites this map with the user's env values at install time. The
+# keys must exist for a bare `helm template`/lint to render at all — reading
+# .Values.olaresEnv.X on a missing map is a nil pointer, not an empty string.
+olaresEnv:
+  HF_TOKEN: ""
+  SERVING_PROFILE: ""
+  EXTRA_ARGS: ""
+  VISION: "1"

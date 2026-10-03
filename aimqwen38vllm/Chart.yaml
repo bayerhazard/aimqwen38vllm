@@ -1,6 +1,6 @@
 apiVersion: v2
-appVersion: '26.10.1'
+appVersion: '26.10.2'
 description: Qwen3.8-27B served with vLLM
 name: aimqwen38vllm
 type: application
-version: '26.10.1'
+version: '26.10.2'

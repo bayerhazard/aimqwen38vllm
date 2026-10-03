@@ -9,8 +9,8 @@ spec:
 
     **主要特性**
     投机解码：MTP（int8）
-    KV 缓存：200k，k4v4_g128
-    MAX_SEQS=2
-    性能：80 - 100 t/s
+    KV 缓存：200k，k4v2_g128
+    MAX_SEQS=4
+    性能：代码 95 - 117 t/s，散文 70 - 99 t/s
     视觉：视觉塔卸载到主机内存
     OpenAI 兼容 API
